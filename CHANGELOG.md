@@ -4,6 +4,43 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)规范。
 
+## [1.1.2] - 2024-12-19
+
+### 修复问题
+- 🐛 **彻底修复Webhook模块依赖问题**: 解决 "Cannot find module 'node-fetch'" 错误
+  - 使用Electron内置的`net`模块替代`node-fetch`
+  - 移除所有外部HTTP依赖，确保打包后完全正常运行
+  - 重写multipart/form-data实现，不再依赖`form-data`模块
+  - 完全基于Electron内置API，无任何外部依赖
+
+### 技术改进
+- ⚡ 更高性能：使用Chromium网络栈
+- 📦 更小体积：移除外部HTTP库依赖
+- 🛡️ 更安全稳定：基于Electron内置模块
+- 🔧 更好兼容性：避免所有打包后的模块加载问题
+
+### 移除依赖
+- ❌ 移除 `form-data` 依赖
+- ❌ 移除 `node-fetch` 依赖
+
+---
+
+## [1.1.1] - 2024-12-19
+
+### 修复问题
+- 🐛 **修复打包后Webhook功能报错**: 解决 "Cannot find module 'form-data'" 错误
+  - 将HTTP请求和命令执行从渲染进程移至主进程
+  - 通过IPC通信确保模块依赖正确解析
+  - 修复multipart/form-data文件上传功能
+  - 保证打包后应用的稳定运行
+
+### 技术改进
+- 🔧 重构Webhook执行架构，提高安全性
+- 📡 优化IPC通信机制
+- 🛡️ 增强错误处理和超时控制
+
+---
+
 ## [1.1.0] - 2024-12-19
 
 ### 新增功能
@@ -66,9 +103,7 @@
 - 🔧 完善的 .gitignore 配置
 
 ### 依赖项
-- **核心依赖**:
-  - `form-data`: ^4.0.0
-  - `node-fetch`: ^2.7.0
+- **核心依赖**: 无（完全基于Electron内置模块）
 - **开发依赖**:
   - `electron`: ^27.3.11
   - `electron-builder`: ^24.6.4

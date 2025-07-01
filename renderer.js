@@ -2344,115 +2344,36 @@ class WebhookManager {
     
     // 执行HTTP webhook
     async executeHttpWebhook(webhook, context) {
-        const config = webhook.config;
-        const url = this.replaceVariables(config.url, context);
-        
-        let options = {
-            method: config.method || 'POST',
-            headers: {}
-        };
-        
-        // 处理请求头
-        if (config.headers) {
-            Object.keys(config.headers).forEach(key => {
-                options.headers[key] = this.replaceVariables(config.headers[key], context);
-            });
-        }
-        
-        // 处理请求体
-        if (config.body) {
-            if (config.body.type === 'multipart') {
-                // 处理文件上传
-                const FormData = require('form-data');
-                const fs = require('fs');
-                const formData = new FormData();
-                
-                for (const field of config.body.fields) {
-                    const value = this.replaceVariables(field.value, context);
-                    
-                    if (field.type === 'file' && value) {
-                        if (fs.existsSync(value)) {
-                            formData.append(field.name, fs.createReadStream(value), {
-                                filename: require('path').basename(value)
-                            });
-                        } else {
-                            throw new Error(`文件不存在: ${value}`);
-                        }
-                    } else {
-                        formData.append(field.name, value);
-                    }
-                }
-                
-                options.body = formData;
-                // FormData会自动设置Content-Type
-                delete options.headers['Content-Type'];
-                
-            } else if (config.body.type === 'json') {
-                options.headers['Content-Type'] = 'application/json';
-                options.body = JSON.stringify(this.replaceVariablesInObject(config.body.data, context));
-                
-            } else if (config.body.type === 'form') {
-                // 处理application/x-www-form-urlencoded
-                options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-                const params = new URLSearchParams();
-                for (const field of config.body.fields) {
-                    const value = this.replaceVariables(field.value, context);
-                    params.append(field.name, value);
-                }
-                options.body = params.toString();
-                
-            } else if (config.body.type === 'raw') {
-                options.body = this.replaceVariables(config.body.data, context);
+        try {
+            // 通过IPC调用主进程执行HTTP请求
+            const { ipcRenderer } = require('electron');
+            const result = await ipcRenderer.invoke('execute-http-webhook', webhook.config, context);
+            
+            if (!result.success) {
+                throw new Error(result.error);
             }
+            
+            return { status: result.status, data: result.data };
+        } catch (error) {
+            throw new Error(`HTTP Webhook执行失败: ${error.message}`);
         }
-        
-        const fetch = require('node-fetch');
-        const response = await fetch(url, options);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.text();
-        return { status: response.status, data: result };
     }
     
     // 执行命令行webhook
     async executeCommandWebhook(webhook, context) {
-        const { spawn } = require('child_process');
-        const command = this.replaceVariables(webhook.config.command, context);
-        const args = webhook.config.args ? 
-            webhook.config.args.map(arg => this.replaceVariables(arg, context)) : [];
-        
-        return new Promise((resolve, reject) => {
-            const process = spawn(command, args, {
-                shell: true,
-                stdio: ['pipe', 'pipe', 'pipe']
-            });
+        try {
+            // 通过IPC调用主进程执行命令
+            const { ipcRenderer } = require('electron');
+            const result = await ipcRenderer.invoke('execute-command-webhook', webhook.config, context);
             
-            let stdout = '';
-            let stderr = '';
+            if (!result.success) {
+                throw new Error(result.error);
+            }
             
-            process.stdout?.on('data', (data) => {
-                stdout += data.toString();
-            });
-            
-            process.stderr?.on('data', (data) => {
-                stderr += data.toString();
-            });
-            
-            process.on('close', (code) => {
-                if (code === 0) {
-                    resolve({ code, stdout, stderr });
-                } else {
-                    reject(new Error(`命令执行失败 (退出码: ${code}): ${stderr}`));
-                }
-            });
-            
-            process.on('error', (error) => {
-                reject(new Error(`命令执行错误: ${error.message}`));
-            });
-        });
+            return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+        } catch (error) {
+            throw new Error(`命令Webhook执行失败: ${error.message}`);
+        }
     }
     
     // 变量替换

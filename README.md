@@ -88,6 +88,8 @@ npm run build-mac
 npm run build-linux
 ```
 
+> 📋 详细的构建指南和故障排除请查看 [BUILD_GUIDE.md](./BUILD_GUIDE.md)
+
 ## 📋 使用方法
 
 ### 基本流程

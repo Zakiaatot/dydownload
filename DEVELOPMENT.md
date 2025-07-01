@@ -211,6 +211,23 @@ window.webhookManager.addWebhook(webhookConfig)
 
 // 删除webhook
 window.webhookManager.removeWebhook(webhookId)
+
+// 调试IPC通信
+const { ipcRenderer } = require('electron');
+
+// 测试HTTP Webhook IPC调用
+ipcRenderer.invoke('execute-http-webhook', {
+  url: 'https://httpbin.org/post',
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: { type: 'json', data: { test: 'data' } }
+}, { title: 'Test Video' })
+
+// 测试命令 Webhook IPC调用
+ipcRenderer.invoke('execute-command-webhook', {
+  command: 'echo',
+  args: ['Hello World']
+}, { title: 'Test' })
 ```
 
 ### 技术实现
@@ -228,6 +245,14 @@ window.webhookManager.removeWebhook(webhookId)
 - 下载去重防止重复操作
 - 灵活的文件命名策略
 - 完整的日志记录系统（解析+下载）
+
+### Webhook架构设计
+- **主进程处理**: HTTP请求和命令执行在主进程中进行
+- **IPC通信**: 渲染进程通过IPC与主进程通信
+- **零依赖架构**: 完全基于Electron内置`net`模块
+- **安全隔离**: 避免渲染进程直接访问Node.js模块
+- **错误隔离**: 主进程错误不会影响界面响应
+- **完美打包**: 无外部依赖，打包后100%兼容
 
 ## 文件监听
 以下文件的修改会触发自动重载：

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, net } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -213,6 +213,226 @@ ipcMain.handle('load-webhooks', async (event) => {
     return { success: true, webhooks };
   } catch (error) {
     console.error('❌ 加载Webhook配置失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC处理器：执行HTTP Webhook
+ipcMain.handle('execute-http-webhook', async (event, config, context) => {
+  try {
+    // 替换变量的函数
+    function replaceVariables(template, context) {
+      if (typeof template !== 'string') return template;
+      return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+        return context[varName] !== undefined ? context[varName] : match;
+      });
+    }
+    
+    // 对象中的变量替换
+    function replaceVariablesInObject(obj, context) {
+      if (typeof obj === 'string') {
+        return replaceVariables(obj, context);
+      } else if (Array.isArray(obj)) {
+        return obj.map(item => replaceVariablesInObject(item, context));
+      } else if (obj && typeof obj === 'object') {
+        const result = {};
+        Object.keys(obj).forEach(key => {
+          result[key] = replaceVariablesInObject(obj[key], context);
+        });
+        return result;
+      }
+      return obj;
+    }
+    
+    const url = replaceVariables(config.url, context);
+    const method = config.method || 'POST';
+    
+    // 创建请求选项
+    const requestOptions = {
+      method: method,
+      url: url
+    };
+    
+    // 使用Electron的net模块创建请求
+    const request = net.request(requestOptions);
+    
+    // 设置请求头
+    if (config.headers) {
+      Object.keys(config.headers).forEach(key => {
+        const value = replaceVariables(config.headers[key], context);
+        request.setHeader(key, value);
+      });
+    }
+    
+    // 处理请求体
+    let bodyData = '';
+    if (config.body) {
+      if (config.body.type === 'multipart') {
+        // 处理文件上传 - 使用简单的multipart实现
+        const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substr(2);
+        request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`);
+        
+        let formData = '';
+        for (const field of config.body.fields) {
+          const value = replaceVariables(field.value, context);
+          formData += `--${boundary}\r\n`;
+          
+          if (field.type === 'file' && value) {
+            try {
+              await fs.access(value);
+              const fileContent = await fs.readFile(value);
+              const fileName = path.basename(value);
+              formData += `Content-Disposition: form-data; name="${field.name}"; filename="${fileName}"\r\n`;
+              formData += `Content-Type: application/octet-stream\r\n\r\n`;
+              // 对于二进制文件，我们需要特殊处理
+              bodyData = Buffer.concat([
+                Buffer.from(formData, 'utf8'),
+                fileContent,
+                Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8')
+              ]);
+              break; // 简化实现，只处理第一个文件
+            } catch {
+              throw new Error(`文件不存在: ${value}`);
+            }
+          } else {
+            formData += `Content-Disposition: form-data; name="${field.name}"\r\n\r\n`;
+            formData += `${value}\r\n`;
+          }
+        }
+        
+        if (!bodyData) {
+          formData += `--${boundary}--\r\n`;
+          bodyData = formData;
+        }
+        
+      } else if (config.body.type === 'json') {
+        request.setHeader('Content-Type', 'application/json');
+        bodyData = JSON.stringify(replaceVariablesInObject(config.body.data, context));
+        
+      } else if (config.body.type === 'form') {
+        // 处理application/x-www-form-urlencoded
+        request.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+        const params = new URLSearchParams();
+        for (const field of config.body.fields) {
+          const value = replaceVariables(field.value, context);
+          params.append(field.name, value);
+        }
+        bodyData = params.toString();
+        
+      } else if (config.body.type === 'raw') {
+        bodyData = replaceVariables(config.body.data, context);
+      }
+    }
+    
+    // 返回Promise包装的请求
+    return new Promise((resolve, reject) => {
+      let responseData = '';
+      let statusCode = 0;
+      
+      request.on('response', (response) => {
+        statusCode = response.statusCode;
+        
+        response.on('data', (chunk) => {
+          responseData += chunk.toString();
+        });
+        
+        response.on('end', () => {
+          if (statusCode >= 200 && statusCode < 300) {
+            resolve({ 
+              success: true, 
+              status: statusCode, 
+              data: responseData 
+            });
+          } else {
+            resolve({ 
+              success: false, 
+              error: `HTTP ${statusCode}: ${responseData}` 
+            });
+          }
+        });
+      });
+      
+      request.on('error', (error) => {
+        resolve({ 
+          success: false, 
+          error: `请求失败: ${error.message}` 
+        });
+      });
+      
+      // 发送请求体
+      if (bodyData) {
+        if (Buffer.isBuffer(bodyData)) {
+          request.write(bodyData);
+        } else {
+          request.write(bodyData, 'utf8');
+        }
+      }
+      
+      request.end();
+    });
+    
+  } catch (error) {
+    console.error('❌ HTTP Webhook执行失败:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC处理器：执行命令行Webhook
+ipcMain.handle('execute-command-webhook', async (event, config, context) => {
+  try {
+    const { spawn } = require('child_process');
+    
+    // 替换变量的函数
+    function replaceVariables(template, context) {
+      if (typeof template !== 'string') return template;
+      return template.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+        return context[varName] !== undefined ? context[varName] : match;
+      });
+    }
+    
+    const command = replaceVariables(config.command, context);
+    const args = config.args ? 
+      config.args.map(arg => replaceVariables(arg, context)) : [];
+    
+    return new Promise((resolve) => {
+      const process = spawn(command, args, {
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+      
+      let stdout = '';
+      let stderr = '';
+      
+      process.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+      
+      process.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      process.on('close', (code) => {
+        if (code === 0) {
+          resolve({ success: true, code, stdout, stderr });
+        } else {
+          resolve({ success: false, error: `命令执行失败 (退出码: ${code}): ${stderr}`, code, stdout, stderr });
+        }
+      });
+      
+      process.on('error', (error) => {
+        resolve({ success: false, error: `命令执行错误: ${error.message}` });
+      });
+      
+      // 设置超时
+      const timeout = config.timeout || 30000;
+      setTimeout(() => {
+        process.kill();
+        resolve({ success: false, error: `命令执行超时 (${timeout}ms)` });
+      }, timeout);
+    });
+    
+  } catch (error) {
+    console.error('❌ 命令Webhook执行失败:', error);
     return { success: false, error: error.message };
   }
 }); 

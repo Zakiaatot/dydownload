@@ -118,4 +118,5 @@ release/
 # 更新日志和文档（确保不被忽略）
 !CHANGELOG.md
 !README.md
-!DEVELOPMENT.md 
+!DEVELOPMENT.md
+!BUILD_GUIDE.md 
