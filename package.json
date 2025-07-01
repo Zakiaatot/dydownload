@@ -1,0 +1,58 @@
+{
+  "name": "dydownload",
+  "version": "1.0.0",
+  "description": "抖音视频下载工具 - 一个简洁的Electron应用",
+  "main": "main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "debug": "electron . --dev --inspect",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux"
+  },
+  "keywords": ["electron", "douyin", "download", "video"],
+  "author": "zephyr",
+  "license": "MIT",
+  "build": {
+    "appId": "com.dydownload.app",
+    "productName": "抖音下载工具",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!dist/**/*",
+      "!.git/**/*"
+    ],
+    "mac": {
+      "icon": "logo.png",
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "icon": "logo.png",
+      "target": "nsis"
+    },
+    "linux": {
+      "icon": "logo.png",
+      "target": "AppImage"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "form-data": "^4.0.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "electron": "^27.3.11",
+    "electron-builder": "^24.6.4",
+    "electron-reload": "^2.0.0-alpha.1"
+  }
+}
+ 

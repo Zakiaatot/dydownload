@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DyDownload</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 加载页面 -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-logo">
+                <img src="logo.png" alt="DyDownload" class="loading-logo-img">
+                <h2 class="loading-title">DyDownload</h2>
+            </div>
+            <div class="loading-spinner">
+                <div class="spinner"></div>
+            </div>
+            <p class="loading-text">正在启动应用...</p>
+        </div>
+    </div>
+
+    <div class="app-container" id="main-app" style="display: none;">
+        <!-- 左侧菜单栏 -->
+        <div class="sidebar">
+            <div class="logo">
+                <h3>DyDownload</h3>
+            </div>
+            <nav class="nav-menu">
+                <div class="nav-item active" data-page="function">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    <span>功能</span>
+                </div>
+                <div class="nav-item" data-page="logs">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14,2 14,8 20,8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10,9 9,9 8,9"/>
+                    </svg>
+                    <span>日志</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>设置</span>
+                </div>
+            </nav>
+        </div>
+
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <!-- 开发模式指示器 -->
+            <div id="dev-indicator" style="display: none; position: fixed; top: 5px; right: 5px; background: #4ade80; color: white; padding: 2px 8px; border-radius: 10px; font-size: 10px; z-index: 1000;">
+                🚀 DEV
+            </div>
+            <!-- 功能页面 -->
+            <div class="page active" id="function-page">
+                <div class="page-header">
+                    <h2>功能页面</h2>
+                </div>
+                <div class="page-body">
+                    <!-- 控制区域 -->
+                    <div class="control-section">
+                        <div class="switch-container">
+                            <label class="switch">
+                                <input type="checkbox" id="clipboard-toggle">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="switch-label" id="switch-status">开始监听</span>
+                        </div>
+                        <p class="help-text">开启后将自动监听剪贴板内容变化</p>
+                    </div>
+
+                    <!-- 抖音链接显示区域 -->
+                    <div class="douyin-section">
+                        <div class="section-title">
+                            <h3>🎵 抖音链接</h3>
+                            <button class="clear-btn" id="clear-douyin">清空</button>
+                        </div>
+                        <div class="douyin-content" id="douyin-display">
+                            <p class="empty-state">暂无抖音链接</p>
+                        </div>
+                    </div>
+
+                    <!-- 剪贴板内容显示区域 -->
+                    <div class="clipboard-section">
+                        <div class="section-title">
+                            <h3>📋 剪贴板内容</h3>
+                            <button class="clear-btn" id="clear-clipboard">清空</button>
+                        </div>
+                        <div class="clipboard-content" id="clipboard-display">
+                            <p class="empty-state">暂无剪贴板内容</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 日志页面 -->
+            <div class="page" id="logs-page">
+                <div class="page-header">
+                    <h2>日志页面</h2>
+                </div>
+                <div class="page-body">
+                    <!-- 日志控制区域 -->
+                    <div class="log-controls">
+                        <div class="log-stats">
+                            <span class="stat-item">📊 总计: <span id="log-total">0</span></span>
+                            <span class="stat-item">✅ 成功: <span id="log-success">0</span></span>
+                            <span class="stat-item">❌ 失败: <span id="log-error">0</span></span>
+                            <span class="stat-item">📥 下载: <span id="log-download">0</span></span>
+                            <span class="stat-item">📡 Webhook: <span id="log-webhook">0</span></span>
+                        </div>
+                        <button class="clear-btn" id="clear-logs">清空日志</button>
+                    </div>
+
+                    <!-- 日志内容显示区域 -->
+                    <div class="logs-section">
+                        <div class="logs-content" id="logs-display">
+                            <p class="empty-state">暂无日志信息</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置页面 -->
+            <div class="page" id="settings-page">
+                <div class="page-header">
+                    <h2>设置页面</h2>
+                </div>
+                <div class="page-body">
+                    <!-- 自动下载设置区域 -->
+                    <div class="settings-section">
+                        <div class="setting-group">
+                            <div class="setting-header">
+                                <h3>📥 自动下载设置</h3>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label class="setting-label">自动保存视频</label>
+                                    <p class="setting-desc">解析成功后自动下载视频到指定目录</p>
+                                </div>
+                                <div class="setting-control">
+                                    <label class="switch">
+                                        <input type="checkbox" id="auto-download-toggle">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label class="setting-label">保存目录</label>
+                                    <p class="setting-desc">选择视频保存的文件夹</p>
+                                </div>
+                                <div class="setting-control">
+                                    <div class="path-selector">
+                                        <input type="text" id="download-path" class="path-input" readonly placeholder="请选择保存目录">
+                                        <button class="path-btn" id="select-path">选择目录</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label class="setting-label">文件命名规则</label>
+                                    <p class="setting-desc">设置下载文件的命名方式</p>
+                                </div>
+                                <div class="setting-control">
+                                    <select id="naming-rule" class="select-input">
+                                        <option value="timestamp">时间戳_原始名称</option>
+                                        <option value="title">视频标题_时间戳</option>
+                                        <option value="hash">MD5哈希值</option>
+                                        <option value="sequential">序号_时间戳</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <div class="setting-header">
+                                <h3>⚡ 应用设置</h3>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label class="setting-label">监听间隔</label>
+                                    <p class="setting-desc">剪贴板检查频率（毫秒）</p>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="number" id="monitor-interval" class="number-input" min="200" max="5000" step="100" value="500">
+                                    <span class="unit">ms</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <label class="setting-label">最大日志数</label>
+                                    <p class="setting-desc">保留的最大日志条数</p>
+                                </div>
+                                <div class="setting-control">
+                                    <input type="number" id="max-logs" class="number-input" min="50" max="1000" step="50" value="100">
+                                    <span class="unit">条</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Webhook配置区域 -->
+                        <div class="setting-group">
+                            <div class="setting-header">
+                                <h3>📡 Webhook配置</h3>
+                                <button class="action-btn" id="add-webhook">添加Webhook</button>
+                            </div>
+                            <div id="webhooks-list" class="webhooks-list">
+                                <p class="empty-state">暂无Webhook配置</p>
+                            </div>
+                        </div>
+
+                        <!-- 设置操作区域 -->
+                        <div class="settings-actions">
+                            <button class="action-btn primary" id="save-settings">保存设置</button>
+                            <button class="action-btn" id="reset-settings">重置设置</button>
+                            <button class="action-btn" id="export-settings">导出设置</button>
+                            <button class="action-btn" id="import-settings">导入设置</button>
+                        </div>
+
+                        <!-- 当前设置状态 -->
+                        <div class="settings-status">
+                            <div class="status-item">
+                                <span class="status-label">当前状态:</span>
+                                <span class="status-value" id="current-status">未保存</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">最后更新:</span>
+                                <span class="status-value" id="last-updated">从未</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html> 
