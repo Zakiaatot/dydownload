@@ -1,6 +1,6 @@
 {
   "name": "dydownload",
-  "version": "1.1.2",
+  "version": "1.1.4",
   "description": "抖音视频下载工具 - 一个简洁的Electron应用",
   "main": "main.js",
   "homepage": "./",

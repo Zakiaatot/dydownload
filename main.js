@@ -219,6 +219,8 @@ ipcMain.handle('load-webhooks', async (event) => {
 
 // IPC处理器：执行HTTP Webhook
 ipcMain.handle('execute-http-webhook', async (event, config, context) => {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  
   try {
     // 替换变量的函数
     function replaceVariables(template, context) {
@@ -247,6 +249,31 @@ ipcMain.handle('execute-http-webhook', async (event, config, context) => {
     const url = replaceVariables(config.url, context);
     const method = config.method || 'POST';
     
+    console.log('\n📡 ========== HTTP Webhook 请求开始 ==========');
+    console.log(`🆔 请求ID: ${requestId}`);
+    console.log(`📍 URL: ${url}`);
+    console.log(`🔄 方法: ${method}`);
+    console.log(`📅 时间: ${new Date().toLocaleString()}`);
+    
+    // 记录上下文变量
+    console.log('🔧 上下文变量:');
+    Object.keys(context).forEach(key => {
+      console.log(`   ${key}: ${context[key]}`);
+    });
+    
+    // 记录原始配置
+    console.log('⚙️ 原始配置:');
+    console.log('   URL模板:', config.url);
+    if (config.headers) {
+      console.log('   请求头模板:', JSON.stringify(config.headers, null, 2));
+    }
+    if (config.body) {
+      console.log(`   请求体类型: ${config.body.type}`);
+      if (config.body.type === 'json') {
+        console.log('   请求体数据:', JSON.stringify(config.body.data, null, 2));
+      }
+    }
+    
     // 创建请求选项
     const requestOptions = {
       method: method,
@@ -256,111 +283,211 @@ ipcMain.handle('execute-http-webhook', async (event, config, context) => {
     // 使用Electron的net模块创建请求
     const request = net.request(requestOptions);
     
-    // 设置请求头
+    // 处理并记录请求头
+    const processedHeaders = {};
     if (config.headers) {
+      console.log('\n📋 处理请求头:');
       Object.keys(config.headers).forEach(key => {
         const value = replaceVariables(config.headers[key], context);
+        processedHeaders[key] = value;
         request.setHeader(key, value);
+        console.log(`   ${key}: ${value}`);
       });
+    } else {
+      console.log('\n📋 无自定义请求头');
     }
     
     // 处理请求体
     let bodyData = '';
+    console.log('\n📦 处理请求体:');
+    
     if (config.body) {
+      console.log(`   类型: ${config.body.type}`);
+      
       if (config.body.type === 'multipart') {
-        // 处理文件上传 - 使用简单的multipart实现
+        // 处理文件上传 - 完整的multipart实现
         const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substr(2);
-        request.setHeader('Content-Type', `multipart/form-data; boundary=${boundary}`);
+        const contentType = `multipart/form-data; boundary=${boundary}`;
+        request.setHeader('Content-Type', contentType);
+        console.log(`   Content-Type: ${contentType}`);
+        console.log('   字段列表:');
         
-        let formData = '';
+        const parts = [];
+        let hasFiles = false;
+        
+        // 处理所有字段
         for (const field of config.body.fields) {
           const value = replaceVariables(field.value, context);
-          formData += `--${boundary}\r\n`;
           
           if (field.type === 'file' && value) {
             try {
               await fs.access(value);
               const fileContent = await fs.readFile(value);
               const fileName = path.basename(value);
-              formData += `Content-Disposition: form-data; name="${field.name}"; filename="${fileName}"\r\n`;
-              formData += `Content-Type: application/octet-stream\r\n\r\n`;
-              // 对于二进制文件，我们需要特殊处理
-              bodyData = Buffer.concat([
-                Buffer.from(formData, 'utf8'),
-                fileContent,
-                Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8')
-              ]);
-              break; // 简化实现，只处理第一个文件
-            } catch {
+              console.log(`     📎 ${field.name}:`);
+              console.log(`       文件路径: ${value}`);
+              console.log(`       文件名: ${fileName}`);
+              console.log(`       文件大小: ${fileContent.length} 字节`);
+              
+              // 构建文件字段的头部
+              const fileHeader = `--${boundary}\r\nContent-Disposition: form-data; name="${field.name}"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+              parts.push({
+                type: 'file',
+                header: Buffer.from(fileHeader, 'utf8'),
+                content: fileContent,
+                footer: Buffer.from('\r\n', 'utf8')
+              });
+              hasFiles = true;
+            } catch (error) {
+              console.log(`     ❌ ${field.name}: 文件访问失败`);
+              console.log(`       尝试路径: ${value}`);
+              console.log(`       错误信息: ${error.message}`);
               throw new Error(`文件不存在: ${value}`);
             }
           } else {
-            formData += `Content-Disposition: form-data; name="${field.name}"\r\n\r\n`;
-            formData += `${value}\r\n`;
+            console.log(`     📝 ${field.name}: "${value}"`);
+            
+            // 构建文本字段
+            const textPart = `--${boundary}\r\nContent-Disposition: form-data; name="${field.name}"\r\n\r\n${value}\r\n`;
+            parts.push({
+              type: 'text',
+              content: Buffer.from(textPart, 'utf8')
+            });
           }
         }
         
-        if (!bodyData) {
-          formData += `--${boundary}--\r\n`;
-          bodyData = formData;
+        // 添加结束边界
+        const endBoundary = Buffer.from(`--${boundary}--\r\n`, 'utf8');
+        
+        // 组装所有部分
+        const bufferParts = [];
+        for (const part of parts) {
+          if (part.type === 'file') {
+            bufferParts.push(part.header);
+            bufferParts.push(part.content);
+            bufferParts.push(part.footer);
+          } else {
+            bufferParts.push(part.content);
+          }
         }
+        bufferParts.push(endBoundary);
+        
+        bodyData = Buffer.concat(bufferParts);
         
       } else if (config.body.type === 'json') {
-        request.setHeader('Content-Type', 'application/json');
-        bodyData = JSON.stringify(replaceVariablesInObject(config.body.data, context));
+        const contentType = 'application/json';
+        request.setHeader('Content-Type', contentType);
+        console.log(`   Content-Type: ${contentType}`);
+        const processedData = replaceVariablesInObject(config.body.data, context);
+        bodyData = JSON.stringify(processedData);
+        console.log(`   JSON数据: ${bodyData}`);
         
       } else if (config.body.type === 'form') {
         // 处理application/x-www-form-urlencoded
-        request.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+        const contentType = 'application/x-www-form-urlencoded';
+        request.setHeader('Content-Type', contentType);
+        console.log(`   Content-Type: ${contentType}`);
+        console.log('   表单字段:');
+        
         const params = new URLSearchParams();
         for (const field of config.body.fields) {
           const value = replaceVariables(field.value, context);
           params.append(field.name, value);
+          console.log(`     ${field.name}: "${value}"`);
         }
         bodyData = params.toString();
+        console.log(`   编码后: ${bodyData}`);
         
       } else if (config.body.type === 'raw') {
         bodyData = replaceVariables(config.body.data, context);
+        console.log(`   原始数据: ${bodyData}`);
       }
+      
+      if (bodyData && !Buffer.isBuffer(bodyData)) {
+        console.log(`   数据长度: ${bodyData.length} 字符`);
+      } else if (Buffer.isBuffer(bodyData)) {
+        console.log(`   数据长度: ${bodyData.length} 字节 (二进制)`);
+      }
+    } else {
+      console.log('   无请求体');
     }
+    
+    // 发送请求
+    console.log('\n🚀 发送请求...');
     
     // 返回Promise包装的请求
     return new Promise((resolve, reject) => {
       let responseData = '';
       let statusCode = 0;
+      let responseHeaders = {};
+      const startTime = Date.now();
       
       request.on('response', (response) => {
         statusCode = response.statusCode;
+        responseHeaders = response.headers || {};
+        
+        console.log('\n📨 收到响应:');
+        console.log(`   状态码: ${statusCode}`);
+        console.log(`   响应头:`, JSON.stringify(responseHeaders, null, 2));
         
         response.on('data', (chunk) => {
           responseData += chunk.toString();
         });
         
         response.on('end', () => {
+          const duration = Date.now() - startTime;
+          
+          console.log('\n📄 响应完成:');
+          console.log(`   耗时: ${duration}ms`);
+          console.log(`   响应体长度: ${responseData.length} 字符`);
+          
+          // 如果响应体不太长，显示完整内容
+          if (responseData.length < 1000) {
+            console.log(`   响应体内容: ${responseData}`);
+          } else {
+            console.log(`   响应体预览: ${responseData.substring(0, 500)}...`);
+          }
+          
           if (statusCode >= 200 && statusCode < 300) {
+            console.log(`✅ [${requestId}] HTTP Webhook 执行成功`);
+            console.log('📡 ========================================\n');
             resolve({ 
               success: true, 
               status: statusCode, 
-              data: responseData 
+              data: responseData,
+              headers: responseHeaders,
+              duration: duration
             });
           } else {
+            console.log(`❌ [${requestId}] HTTP Webhook 执行失败: HTTP ${statusCode}`);
+            console.log('📡 ========================================\n');
             resolve({ 
               success: false, 
-              error: `HTTP ${statusCode}: ${responseData}` 
+              error: `HTTP ${statusCode}: ${responseData}`,
+              status: statusCode,
+              headers: responseHeaders,
+              duration: duration
             });
           }
         });
       });
       
       request.on('error', (error) => {
+        const duration = Date.now() - startTime;
+        console.log(`\n❌ [${requestId}] 请求错误: ${error.message}`);
+        console.log(`   耗时: ${duration}ms`);
+        console.log('📡 ========================================\n');
+        
         resolve({ 
           success: false, 
-          error: `请求失败: ${error.message}` 
+          error: `请求失败: ${error.message}`,
+          duration: duration
         });
       });
       
       // 发送请求体
       if (bodyData) {
+        console.log('📤 发送请求体...');
         if (Buffer.isBuffer(bodyData)) {
           request.write(bodyData);
         } else {
@@ -369,16 +496,20 @@ ipcMain.handle('execute-http-webhook', async (event, config, context) => {
       }
       
       request.end();
+      console.log('📡 请求已发送，等待响应...');
     });
     
   } catch (error) {
-    console.error('❌ HTTP Webhook执行失败:', error);
+    console.error(`❌ [${requestId}] HTTP Webhook执行失败:`, error);
+    console.log('📡 ========================================\n');
     return { success: false, error: error.message };
   }
 });
 
 // IPC处理器：执行命令行Webhook
 ipcMain.handle('execute-command-webhook', async (event, config, context) => {
+  const requestId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  
   try {
     const { spawn } = require('child_process');
     
@@ -393,6 +524,33 @@ ipcMain.handle('execute-command-webhook', async (event, config, context) => {
     const command = replaceVariables(config.command, context);
     const args = config.args ? 
       config.args.map(arg => replaceVariables(arg, context)) : [];
+    const timeout = config.timeout || 30000;
+    
+    console.log('\n⚡ ========== 命令 Webhook 执行开始 ==========');
+    console.log(`🆔 执行ID: ${requestId}`);
+    console.log(`📅 时间: ${new Date().toLocaleString()}`);
+    
+    // 记录上下文变量
+    console.log('🔧 上下文变量:');
+    Object.keys(context).forEach(key => {
+      console.log(`   ${key}: ${context[key]}`);
+    });
+    
+    // 记录命令信息
+    console.log('⚙️ 命令配置:');
+    console.log(`   原始命令: ${config.command}`);
+    console.log(`   处理后命令: ${command}`);
+    if (config.args) {
+      console.log(`   原始参数: [${config.args.join(', ')}]`);
+      console.log(`   处理后参数: [${args.join(', ')}]`);
+    } else {
+      console.log(`   参数: 无`);
+    }
+    console.log(`   超时时间: ${timeout}ms`);
+    console.log(`   执行模式: spawn with shell`);
+    
+    console.log('\n🚀 开始执行命令...');
+    const startTime = Date.now();
     
     return new Promise((resolve) => {
       const process = spawn(command, args, {
@@ -402,37 +560,125 @@ ipcMain.handle('execute-command-webhook', async (event, config, context) => {
       
       let stdout = '';
       let stderr = '';
+      let timeoutHandle;
+      
+      // 设置超时
+      timeoutHandle = setTimeout(() => {
+        console.log(`⏰ [${requestId}] 命令执行超时，正在终止进程...`);
+        process.kill('SIGTERM');
+        
+        // 如果SIGTERM不起作用，5秒后强制杀死
+        setTimeout(() => {
+          if (!process.killed) {
+            console.log(`🔪 [${requestId}] 强制终止进程`);
+            process.kill('SIGKILL');
+          }
+        }, 5000);
+      }, timeout);
+      
+      console.log(`📊 进程ID: ${process.pid}`);
       
       process.stdout?.on('data', (data) => {
-        stdout += data.toString();
+        const chunk = data.toString();
+        stdout += chunk;
+        console.log(`📤 [${requestId}] stdout: ${chunk.trim()}`);
       });
       
       process.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+        console.log(`📥 [${requestId}] stderr: ${chunk.trim()}`);
       });
       
-      process.on('close', (code) => {
+      process.on('close', (code, signal) => {
+        clearTimeout(timeoutHandle);
+        const duration = Date.now() - startTime;
+        
+        console.log('\n📄 命令执行完成:');
+        console.log(`   耗时: ${duration}ms`);
+        console.log(`   退出码: ${code}`);
+        if (signal) {
+          console.log(`   终止信号: ${signal}`);
+        }
+        
         if (code === 0) {
-          resolve({ success: true, code, stdout, stderr });
+          console.log(`✅ [${requestId}] 命令执行成功`);
+          
+          if (stdout) {
+            console.log(`   标准输出 (${stdout.length} 字符):`);
+            if (stdout.length < 1000) {
+              console.log(stdout.split('\n').map(line => `     ${line}`).join('\n'));
+            } else {
+              const preview = stdout.substring(0, 500);
+              console.log(preview.split('\n').map(line => `     ${line}`).join('\n'));
+              console.log(`     ... (输出过长，已截断)`);
+            }
+          } else {
+            console.log(`   标准输出: (无输出)`);
+          }
+          
+          if (stderr) {
+            console.log(`   标准错误输出:`);
+            console.log(stderr.split('\n').map(line => `     ${line}`).join('\n'));
+          }
+          
+          console.log('⚡ ========================================\n');
+          
+          resolve({ 
+            success: true, 
+            code, 
+            stdout, 
+            stderr,
+            duration,
+            signal
+          });
         } else {
-          resolve({ success: false, error: `命令执行失败 (退出码: ${code}): ${stderr}`, code, stdout, stderr });
+          console.log(`❌ [${requestId}] 命令执行失败:`);
+          console.log(`   错误代码: ${code}`);
+          
+          if (stderr) {
+            console.log(`   标准错误输出:`);
+            console.log(stderr.split('\n').map(line => `     ${line}`).join('\n'));
+          }
+          
+          if (stdout) {
+            console.log(`   标准输出:`);
+            console.log(stdout.split('\n').map(line => `     ${line}`).join('\n'));
+          }
+          
+          console.log('⚡ ========================================\n');
+          
+          resolve({ 
+            success: false, 
+            error: `命令执行失败 (退出码: ${code}): ${stderr}`, 
+            code, 
+            stdout, 
+            stderr,
+            duration,
+            signal
+          });
         }
       });
       
       process.on('error', (error) => {
-        resolve({ success: false, error: `命令执行错误: ${error.message}` });
+        clearTimeout(timeoutHandle);
+        const duration = Date.now() - startTime;
+        
+        console.log(`❌ [${requestId}] 命令执行错误: ${error.message}`);
+        console.log(`   耗时: ${duration}ms`);
+        console.log('⚡ ========================================\n');
+        
+        resolve({ 
+          success: false, 
+          error: `命令执行错误: ${error.message}`,
+          duration
+        });
       });
-      
-      // 设置超时
-      const timeout = config.timeout || 30000;
-      setTimeout(() => {
-        process.kill();
-        resolve({ success: false, error: `命令执行超时 (${timeout}ms)` });
-      }, timeout);
     });
     
   } catch (error) {
-    console.error('❌ 命令Webhook执行失败:', error);
+    console.error(`❌ [${requestId}] 命令Webhook执行失败:`, error);
+    console.log('⚡ ========================================\n');
     return { success: false, error: error.message };
   }
 }); 

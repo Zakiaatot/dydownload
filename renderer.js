@@ -2250,42 +2250,93 @@ class WebhookManager {
     async executeWebhooks(trigger, context = {}) {
         const activeWebhooks = this.webhooks.filter(w => w.enabled && w.trigger === trigger);
         
+        console.log(`\n🔄 ========== Webhook 批量执行开始 ==========`);
+        console.log(`📅 时间: ${new Date().toLocaleString()}`);
+        console.log(`🎯 触发器: ${trigger}`);
+        console.log(`📊 总共${this.webhooks.length}个webhook，其中${activeWebhooks.length}个启用的${trigger}类型`);
+        
+        // 显示上下文信息
+        console.log('🔧 执行上下文:');
+        Object.keys(context).forEach(key => {
+            console.log(`   ${key}: ${context[key]}`);
+        });
+        
         if (activeWebhooks.length === 0) {
-            console.log(`📡 没有启用的${trigger}类型webhook`);
+            console.log(`📡 没有启用的${trigger}类型webhook，跳过执行`);
+            console.log('🔄 ========================================\n');
             return;
         }
         
-        console.log(`📡 执行${activeWebhooks.length}个${trigger}类型webhook`);
+        // 显示将要执行的webhook列表
+        console.log('\n📋 将要执行的Webhook列表:');
+        activeWebhooks.forEach((webhook, index) => {
+            console.log(`   ${index + 1}. ${webhook.name} (${webhook.type})`);
+        });
+        
+        console.log(`\n🚀 开始并行执行${activeWebhooks.length}个webhook...`);
+        const startTime = Date.now();
         
         // 并行执行所有匹配的webhooks
         const promises = activeWebhooks.map(webhook => this.executeWebhook(webhook, context));
-        await Promise.allSettled(promises);
+        const results = await Promise.allSettled(promises);
+        
+        const duration = Date.now() - startTime;
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+        
+        console.log(`\n📊 Webhook批量执行完成:`);
+        console.log(`   总耗时: ${duration}ms`);
+        console.log(`   成功: ${successful}个`);
+        console.log(`   失败: ${failed}个`);
+        console.log('🔄 ========================================\n');
     }
     
     // 执行单个webhook
     async executeWebhook(webhook, context) {
         const executionId = `${webhook.id}-${Date.now()}`;
         
+        console.log(`\n🎯 ========== 单个Webhook执行开始 ==========`);
+        console.log(`🆔 执行ID: ${executionId}`);
+        console.log(`📝 名称: ${webhook.name}`);
+        console.log(`🔧 类型: ${webhook.type}`);
+        console.log(`🎯 触发器: ${webhook.trigger}`);
+        console.log(`📅 时间: ${new Date().toLocaleString()}`);
+        
         if (this.executing.has(webhook.id)) {
-            console.log(`⏳ Webhook ${webhook.name} 正在执行中，跳过`);
+            console.log(`⏳ Webhook ${webhook.name} 正在执行中，跳过此次执行`);
+            console.log('🎯 ========================================\n');
             return;
         }
         
         this.executing.add(webhook.id);
+        console.log(`🔒 已锁定webhook执行状态`);
         
         const startTime = Date.now();
         let attempt = 0;
         let lastError = null;
+        const maxAttempts = webhook.retry.enabled ? webhook.retry.maxAttempts : 1;
+        const retryDelay = webhook.retry.delay || 1000;
+        
+        console.log(`⚙️ 重试配置:`);
+        console.log(`   启用重试: ${webhook.retry.enabled ? '是' : '否'}`);
+        console.log(`   最大尝试次数: ${maxAttempts}`);
+        if (webhook.retry.enabled) {
+            console.log(`   重试延迟: ${retryDelay}ms`);
+        }
         
         try {
-            while (attempt < (webhook.retry.enabled ? webhook.retry.maxAttempts : 1)) {
+            while (attempt < maxAttempts) {
                 attempt++;
                 
                 try {
-                    console.log(`📡 执行Webhook: ${webhook.name} (第${attempt}次尝试)`);
+                    console.log(`\n🔄 第${attempt}次尝试执行 (共${maxAttempts}次)`);
+                    const attemptStartTime = Date.now();
                     
                     const result = await this.performWebhookAction(webhook, context);
-                    const duration = Date.now() - startTime;
+                    const attemptDuration = Date.now() - attemptStartTime;
+                    const totalDuration = Date.now() - startTime;
+                    
+                    console.log(`✅ 第${attempt}次尝试成功 (耗时: ${attemptDuration}ms)`);
                     
                     // 记录成功日志
                     this.logWebhookExecution({
@@ -2293,27 +2344,42 @@ class WebhookManager {
                         webhookName: webhook.name,
                         trigger: webhook.trigger,
                         status: 'success',
-                        duration,
+                        duration: totalDuration,
                         attempt,
                         context,
                         result
                     });
                     
-                    console.log(`✅ Webhook ${webhook.name} 执行成功 (${duration}ms)`);
+                    console.log(`🎉 Webhook "${webhook.name}" 执行成功！`);
+                    console.log(`   总耗时: ${totalDuration}ms`);
+                    console.log(`   成功尝试: ${attempt}/${maxAttempts}`);
+                    console.log('🎯 ========================================\n');
                     return result;
                     
                 } catch (error) {
                     lastError = error;
-                    console.error(`❌ Webhook ${webhook.name} 第${attempt}次执行失败:`, error.message);
+                    const attemptDuration = Date.now() - attemptStartTime;
                     
-                    if (attempt < (webhook.retry.enabled ? webhook.retry.maxAttempts : 1)) {
-                        await this.sleep(webhook.retry.delay || 1000);
+                    console.error(`❌ 第${attempt}次尝试失败 (耗时: ${attemptDuration}ms)`);
+                    console.error(`   错误信息: ${error.message}`);
+                    
+                    if (attempt < maxAttempts) {
+                        console.log(`⏰ ${retryDelay}ms后进行第${attempt + 1}次重试...`);
+                        await this.sleep(retryDelay);
+                    } else {
+                        console.error(`💥 所有${maxAttempts}次尝试均失败`);
                     }
                 }
             }
             
             // 所有重试都失败了
             const duration = Date.now() - startTime;
+            
+            console.error(`🚨 Webhook "${webhook.name}" 彻底执行失败！`);
+            console.error(`   总耗时: ${duration}ms`);
+            console.error(`   失败尝试: ${attempt}/${maxAttempts}`);
+            console.error(`   最后错误: ${lastError?.message || '未知错误'}`);
+            
             this.logWebhookExecution({
                 webhookId: webhook.id,
                 webhookName: webhook.name,
@@ -2325,8 +2391,12 @@ class WebhookManager {
                 error: lastError?.message || '未知错误'
             });
             
+            console.log('🎯 ========================================\n');
+            throw lastError;
+            
         } finally {
             this.executing.delete(webhook.id);
+            console.log(`🔓 已解锁webhook执行状态`);
         }
     }
     
@@ -2344,34 +2414,88 @@ class WebhookManager {
     
     // 执行HTTP webhook
     async executeHttpWebhook(webhook, context) {
+        console.log(`\n🌐 执行HTTP Webhook: ${webhook.name}`);
+        console.log(`📍 URL: ${webhook.config.url}`);
+        console.log(`🔄 方法: ${webhook.config.method || 'POST'}`);
+        
         try {
             // 通过IPC调用主进程执行HTTP请求
             const { ipcRenderer } = require('electron');
+            console.log(`📨 发送IPC调用到主进程...`);
+            
             const result = await ipcRenderer.invoke('execute-http-webhook', webhook.config, context);
             
+            console.log(`📥 收到主进程响应:`, {
+                success: result.success,
+                status: result.status,
+                duration: result.duration,
+                dataLength: result.data ? result.data.length : 0
+            });
+            
             if (!result.success) {
+                console.error(`❌ HTTP请求失败: ${result.error}`);
                 throw new Error(result.error);
             }
             
-            return { status: result.status, data: result.data };
+            console.log(`✅ HTTP Webhook执行成功，状态码: ${result.status}`);
+            return { 
+                status: result.status, 
+                data: result.data,
+                headers: result.headers,
+                duration: result.duration
+            };
         } catch (error) {
+            console.error(`💥 HTTP Webhook执行异常: ${error.message}`);
             throw new Error(`HTTP Webhook执行失败: ${error.message}`);
         }
     }
     
     // 执行命令行webhook
     async executeCommandWebhook(webhook, context) {
+        console.log(`\n⚡ 执行命令 Webhook: ${webhook.name}`);
+        console.log(`📜 命令: ${webhook.config.command}`);
+        if (webhook.config.args && webhook.config.args.length > 0) {
+            console.log(`📋 参数: [${webhook.config.args.join(', ')}]`);
+        }
+        console.log(`⏱️ 超时: ${webhook.config.timeout || 30000}ms`);
+        
         try {
             // 通过IPC调用主进程执行命令
             const { ipcRenderer } = require('electron');
+            console.log(`📨 发送IPC调用到主进程...`);
+            
             const result = await ipcRenderer.invoke('execute-command-webhook', webhook.config, context);
             
+            console.log(`📥 收到主进程响应:`, {
+                success: result.success,
+                code: result.code,
+                duration: result.duration,
+                stdoutLength: result.stdout ? result.stdout.length : 0,
+                stderrLength: result.stderr ? result.stderr.length : 0
+            });
+            
             if (!result.success) {
+                console.error(`❌ 命令执行失败: ${result.error}`);
                 throw new Error(result.error);
             }
             
-            return { code: result.code, stdout: result.stdout, stderr: result.stderr };
+            console.log(`✅ 命令 Webhook执行成功，退出码: ${result.code}`);
+            if (result.stdout) {
+                console.log(`📤 标准输出长度: ${result.stdout.length} 字符`);
+            }
+            if (result.stderr) {
+                console.log(`📥 标准错误长度: ${result.stderr.length} 字符`);
+            }
+            
+            return { 
+                code: result.code, 
+                stdout: result.stdout, 
+                stderr: result.stderr,
+                duration: result.duration,
+                signal: result.signal
+            };
         } catch (error) {
+            console.error(`💥 命令 Webhook执行异常: ${error.message}`);
             throw new Error(`命令Webhook执行失败: ${error.message}`);
         }
     }
@@ -2403,6 +2527,39 @@ class WebhookManager {
     
     // 记录webhook执行日志
     logWebhookExecution(logData) {
+        console.log('\n📝 ========== Webhook执行日志记录 ==========');
+        console.log(`🆔 Webhook ID: ${logData.webhookId}`);
+        console.log(`📝 名称: ${logData.webhookName}`);
+        console.log(`🎯 触发器: ${logData.trigger}`);
+        console.log(`📊 状态: ${logData.status === 'success' ? '✅ 成功' : '❌ 失败'}`);
+        console.log(`⏱️ 耗时: ${logData.duration}ms`);
+        console.log(`🔄 尝试次数: ${logData.attempt}`);
+        
+        if (logData.error) {
+            console.log(`💥 错误信息: ${logData.error}`);
+        }
+        
+        if (logData.result) {
+            console.log(`📊 执行结果:`);
+            if (logData.result.status) {
+                console.log(`   HTTP状态码: ${logData.result.status}`);
+            }
+            if (logData.result.code !== undefined) {
+                console.log(`   命令退出码: ${logData.result.code}`);
+            }
+            if (logData.result.duration) {
+                console.log(`   实际耗时: ${logData.result.duration}ms`);
+            }
+        }
+        
+        console.log(`🔧 上下文变量:`);
+        Object.keys(logData.context).forEach(key => {
+            console.log(`   ${key}: ${logData.context[key]}`);
+        });
+        
+        console.log('📝 ========================================\n');
+        
+        // 同时记录到日志管理器
         if (window.logManager) {
             window.logManager.addLog(
                 'webhook',
@@ -2414,8 +2571,6 @@ class WebhookManager {
                 logData
             );
         }
-        
-        console.log('📡 Webhook执行日志:', logData);
     }
     
     // 测试webhook
