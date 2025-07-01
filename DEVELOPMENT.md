@@ -95,11 +95,12 @@ devUtils.testDownload()
 ### 自动下载设置
 - 🔧 **自动保存视频**: 开启后解析成功的视频会自动下载
 - 📁 **保存目录**: 选择视频保存的文件夹路径
-- 📝 **文件命名规则**: 四种命名方式
+- 📝 **文件命名规则**: 五种命名方式
   - 时间戳_原始名称: `1234567890_douyin_video.mp4`
   - 视频标题_时间戳: `我的视频_1234567890.mp4`
   - MD5哈希值: `abc123def456.mp4`
   - 序号_时间戳: `video_0001_1234567890.mp4`
+  - 视频标识符: `dd80aeXR4M8.mp4`
 
 ### 应用设置
 - ⏱️ **监听间隔**: 剪贴板检查频率，默认500毫秒
@@ -305,6 +306,9 @@ devUtils.downloadInfo()
 
 // 测试下载功能
 devUtils.testDownload()
+
+// 测试文件命名规则
+devUtils.testNamingRules()
 
 // 手动保存设置
 window.settingsManager.saveSettings()

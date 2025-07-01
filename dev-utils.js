@@ -199,6 +199,57 @@ class DevUtils {
           } else {
             console.log('❌ 下载管理器未初始化');
           }
+        },
+        testNamingRules: () => {
+          if (window.videoDownloader) {
+            const testLinks = [
+              'https://v.douyin.com/dd80aeXR4M8/',
+              'https://v.douyin.com/4iq7mCLl-p0/',
+              'https://v.douyin.com/test123'
+            ];
+            const testText = '测试文件命名：这是一个测试视频标题，用于验证不同的文件命名规则。';
+            
+            console.group('🏷️ 测试文件命名规则');
+            
+            const namingRules = [
+              { rule: 'timestamp', name: '时间戳_原始名称' },
+              { rule: 'title', name: '视频标题_时间戳' },
+              { rule: 'hash', name: 'MD5哈希值' },
+              { rule: 'sequential', name: '序号_时间戳' },
+              { rule: 'identifier', name: '视频标识符' }
+            ];
+            
+            const originalRule = window.settingsManager?.settings?.namingRule;
+            
+            testLinks.forEach((link, linkIndex) => {
+              console.log(\`\\n🔗 测试链接 \${linkIndex + 1}: \${link}\`);
+              
+              namingRules.forEach(({ rule, name }) => {
+                // 临时修改命名规则
+                if (window.settingsManager?.settings) {
+                  window.settingsManager.settings.namingRule = rule;
+                }
+                
+                const fileName = window.videoDownloader.generateFileName(testText, link);
+                console.log(\`  \${name}: \${fileName}\`);
+                
+                // 如果是标识符规则，单独显示提取的标识符
+                if (rule === 'identifier') {
+                  const identifier = window.videoDownloader.extractVideoIdentifier(link);
+                  console.log(\`    → 提取的标识符: \${identifier}\`);
+                }
+              });
+            });
+            
+            // 恢复原始设置
+            if (window.settingsManager?.settings && originalRule) {
+              window.settingsManager.settings.namingRule = originalRule;
+            }
+            
+            console.groupEnd();
+          } else {
+            console.log('❌ 下载管理器未初始化');
+          }
         }
       };
       

@@ -2099,6 +2099,11 @@ class VideoDownloader {
                 this.downloadCount++;
                 return `video_${this.downloadCount.toString().padStart(4, '0')}_${timestamp}.mp4`;
                 
+            case 'identifier':
+                // 从抖音链接中提取视频标识符
+                const identifier = this.extractVideoIdentifier(shareLink);
+                return `${identifier}.mp4`;
+                
             default:
                 return `${timestamp}_douyin_video.mp4`;
         }
@@ -2128,6 +2133,24 @@ class VideoDownloader {
             hash = hash & hash; // 转换为32位整数
         }
         return Math.abs(hash).toString(16);
+    }
+    
+    extractVideoIdentifier(shareLink) {
+        try {
+            // 从抖音链接中提取视频标识符
+            // 支持格式: https://v.douyin.com/dd80aeXR4M8/ 或 https://v.douyin.com/dd80aeXR4M8
+            const match = shareLink.match(/https:\/\/v\.douyin\.com\/([A-Za-z0-9\-_]+)\/?/);
+            if (match && match[1]) {
+                return match[1];
+            }
+            
+            // 如果提取失败，返回时间戳作为备选
+            console.warn('⚠️ 无法从链接中提取视频标识符:', shareLink);
+            return `video_${Date.now()}`;
+        } catch (error) {
+            console.error('❌ 提取视频标识符失败:', error);
+            return `video_${Date.now()}`;
+        }
     }
 }
 

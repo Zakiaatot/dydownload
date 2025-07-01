@@ -145,12 +145,13 @@ dydownload/
 ### 调试技巧
 ```javascript
 // 开发者控制台中可用的全局对象
-devUtils.info()          // 查看应用信息
-devUtils.reload()        // 手动刷新页面
-devUtils.clipboardInfo() // 剪贴板状态
-devUtils.douyinInfo()    // 抖音链接信息
-devUtils.logInfo()       // 日志系统信息
-devUtils.testDownload()  // 测试下载功能
+devUtils.info()            // 查看应用信息
+devUtils.reload()          // 手动刷新页面
+devUtils.clipboardInfo()   // 剪贴板状态
+devUtils.douyinInfo()      // 抖音链接信息
+devUtils.logInfo()         // 日志系统信息
+devUtils.testDownload()    // 测试下载功能
+devUtils.testNamingRules() // 测试文件命名规则
 ```
 
 ### 贡献指南
@@ -167,6 +168,7 @@ devUtils.testDownload()  // 测试下载功能
 - **视频标题_时间戳**: `我的视频_1234567890.mp4`
 - **MD5哈希值**: `abc123def456.mp4`
 - **序号_时间戳**: `video_0001_1234567890.mp4`
+- **视频标识符**: `dd80aeXR4M8.mp4`（从链接中提取）
 
 ### API配置
 - 默认解析API: `https://api.xhus.cn/api/douyin?url={链接}`
